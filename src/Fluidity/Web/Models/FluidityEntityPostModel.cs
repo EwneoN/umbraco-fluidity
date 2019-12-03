@@ -5,6 +5,7 @@
 
 using System.Collections.Generic;
 using System.Runtime.Serialization;
+using Umbraco.Core.Models.Editors;
 using Umbraco.Web.Models.ContentEditing;
 
 namespace Fluidity.Web.Models
@@ -15,7 +16,7 @@ namespace Fluidity.Web.Models
         public FluidityEntityPostModel()
         {
             Properties = new List<ContentPropertyBasic>();
-            UploadedFiles = new List<ContentItemFile>();
+            UploadedFiles = new List<ContentPropertyFile>();
         }
 
         [DataMember(Name = "section")]
@@ -25,6 +26,6 @@ namespace Fluidity.Web.Models
         public IEnumerable<ContentPropertyBasic> Properties { get; set; }
 
         [IgnoreDataMember]
-        public List<ContentItemFile> UploadedFiles { get; private set; }
+        public List<ContentPropertyFile> UploadedFiles { get; private set; }
     }
 }

@@ -421,7 +421,9 @@
     <None Include="packages.config" />
     <None Include="Web\UI\App_Plugins\Fluidity\package.manifest" />
   </ItemGroup>
-  <ItemGroup />
+  <ItemGroup>
+    <Folder Include="Composing\" />
+  </ItemGroup>
   <ItemGroup>
     <Content Include="Web\UI\App_Plugins\Fluidity\backoffice\fluidity\edit.controller.js" />
     <Content Include="Web\UI\App_Plugins\Fluidity\backoffice\fluidity\delete.controller.js" />

@@ -8,30 +8,27 @@ using Fluidity.Extensions;
 using Fluidity.Models;
 using Umbraco.Core;
 using Umbraco.Core.Cache;
+using Umbraco.Core.Composing;
 using Umbraco.Core.Models;
 using Umbraco.Core.PropertyEditors;
 using Umbraco.Core.Services;
+using Umbraco.Core.Services.Implement;
 
 namespace Fluidity.Helpers
 {
     internal class UmbracoDataTypeHelper
     {
-        private IDataTypeService _dataTypeService;
-        private PropertyEditorResolver _propertyEditorResolver;
-        private ICacheProvider _cacheProvider;
+        private readonly IDataTypeService _dataTypeService;
+        private readonly IAppCache _appCache;
 
-        internal UmbracoDataTypeHelper(IDataTypeService dataTypeService, PropertyEditorResolver propertyEditorResolver,
-            ICacheProvider cacheProvider)
+        internal UmbracoDataTypeHelper(IDataTypeService dataTypeService, IAppCache appCache)
         {
-            _dataTypeService = dataTypeService;
-            _propertyEditorResolver = propertyEditorResolver;
-            _cacheProvider = cacheProvider;
+	        _dataTypeService = dataTypeService;
+	        _appCache = appCache;
         }
 
         internal UmbracoDataTypeHelper()
-            : this(ApplicationContext.Current.Services.DataTypeService, 
-                  PropertyEditorResolver.Current,
-                  ApplicationContext.Current.ApplicationCache.RequestCache)
+            : this(Current.Services.DataTypeService, Current.AppCaches.RuntimeCache)
         { }
 
         internal DataTypeInfo ResolveDataType(FluidityEditorFieldConfig fieldConfig, bool isReadOnly = false)
@@ -41,27 +38,26 @@ namespace Fluidity.Helpers
                 : fieldConfig.GetOrCalculateDefinititionId().ToString();
             dtdKey += $"_{isReadOnly}";
 
-            return _cacheProvider.GetCacheItem<DataTypeInfo>($"fluidity_datatypeinfo_{dtdKey}", () =>
+            return _appCache.GetCacheItem($"fluidity_datatypeinfo_{dtdKey}", () =>
             {
-                IDataTypeDefinition dataTypeDefinition = null;
+                IDataType dataType = null;
 
                 if (!fieldConfig.DataTypeName.IsNullOrWhiteSpace())
                 {
-                    dataTypeDefinition = _dataTypeService.GetDataTypeDefinitionByName(fieldConfig.DataTypeName);
+                    dataType = _dataTypeService.GetDataType(fieldConfig.DataTypeName);
                 }
 
-                if (dataTypeDefinition == null)
+                if (dataType == null)
                 {
                     var dataTypeId = fieldConfig.DataTypeId == 0 && isReadOnly
                         ? -92 // If readonly and no explicit datatype defined, default to label
                         : fieldConfig.GetOrCalculateDefinititionId();
-                    dataTypeDefinition = _dataTypeService.GetDataTypeDefinitionById(dataTypeId);
+                    dataType = _dataTypeService.GetDataType(dataTypeId);
                 }
 
-                var preValues = _dataTypeService.GetPreValuesCollectionByDataTypeId(dataTypeDefinition.Id);
-                var propEditor = _propertyEditorResolver.GetByAlias(dataTypeDefinition.PropertyEditorAlias);
+                var preValues = (ValueListConfiguration)dataType.Configuration;
 
-                return new DataTypeInfo(dataTypeDefinition, propEditor, preValues);
+                return new DataTypeInfo(dataType, dataType.Editor, preValues);
             });
         }
     }

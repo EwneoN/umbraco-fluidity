@@ -10,12 +10,14 @@ using System.Net.Http;
 using System.Net.Http.Formatting;
 using System.Web;
 using System.Web.Http;
+using System.Web.Http.ModelBinding;
 using Fluidity.Configuration;
 using Fluidity.Extensions;
 using Fluidity.Web.Extensions;
 using Umbraco.Core;
 using Umbraco.Core.IO;
 using Umbraco.Core.Services;
+using Umbraco.Web.Actions;
 using Umbraco.Web.Models.Trees;
 using Umbraco.Web.Mvc;
 using Umbraco.Web.Trees;
@@ -24,7 +26,7 @@ using Umbraco.Web.WebApi.Filters;
 namespace Fluidity.Web.Trees
 {
     [PluginController("fluidity")]
-    [Tree("fluidity", "fluidity", "Fluidity", initialize:false)]
+    [Tree("fluidity", "fluidity", TreeTitle = "Fluidity")]
     public class FluidityTreeController : TreeController
     {
         internal FluidityContext Context => FluidityContext.Current;
@@ -45,8 +47,8 @@ namespace Fluidity.Web.Trees
 
         public override string TreeAlias => TreeConfig.Alias;
 
-        [HttpQueryStringFilter("queryStrings")]
-        public TreeNode GetTreeNode(string id, FormDataCollection queryStrings)
+        public TreeNode GetTreeNode(string id, 
+			[ModelBinder(typeof(HttpQueryStringModelBinder), Name = "queryStrings")]FormDataCollection queryStrings)
         {
             var alias = id; 
             object entityId = null;
@@ -162,9 +164,8 @@ namespace Fluidity.Web.Trees
         {
             var menu = new MenuItemCollection(); 
 
-            var createText = Services.TextService.Localize("actions/" + ActionNew.Instance.Alias);
-            var deleteText = Services.TextService.Localize("actions/" + ActionDelete.Instance.Alias);
-            var refreshText = Services.TextService.Localize("actions/" + ActionRefresh.Instance.Alias);
+            var createText = Services.TextService.Localize("actions/" + ActionNew.ActionAlias);
+            var deleteText = Services.TextService.Localize("actions/" + ActionDelete.ActionAlias);
 
             var alias = id;
             object entityId = null; 
@@ -182,7 +183,7 @@ namespace Fluidity.Web.Trees
             var currentFolderConfig = currentItemConfig as FluidityFolderConfig;
             if (currentFolderConfig != null)
             {
-                menu.Items.Add<RefreshNode, ActionRefresh>(refreshText, true);
+                menu.Items.Add(new RefreshNode(Services.TextService, true));
             }
 
             var currentCollectionConfig = currentItemConfig as FluidityCollectionConfig;
@@ -204,7 +205,7 @@ namespace Fluidity.Web.Trees
                         // same view, where as the in built delete dialog looks for seperate views per tree
                         var menuItem = new MenuItem("delete", deleteText) { Icon = "delete" };
                         menuItem.LaunchDialogView(IOHelper.ResolveUrl($"{SystemDirectories.AppPlugins}/fluidity/backoffice/fluidity/delete.html"), deleteText);
-                        menuItem.SeperatorBefore = hasMenuItems;
+                        menuItem.SeparatorBefore = hasMenuItems;
                         menu.Items.Add(menuItem);
                     }
                 }
@@ -226,7 +227,7 @@ namespace Fluidity.Web.Trees
                     {
                         if (hasMenuItems)
                         {
-                            currentCollectionConfig.ContainerMenuItems.First().SeperatorBefore = true;
+                            currentCollectionConfig.ContainerMenuItems.First().SeparatorBefore = true;
                         }
 
                         menu.Items.AddRange(currentCollectionConfig.ContainerMenuItems);
@@ -234,11 +235,11 @@ namespace Fluidity.Web.Trees
 
                     if (currentCollectionConfig.ViewMode == FluidityViewMode.Tree)
                     {
-                        menu.Items.Add<RefreshNode, ActionRefresh>(refreshText, true);
+                        menu.Items.Add(new RefreshNode(Services.TextService, true));
 
-                        if (hasMenuItems)
+						if (hasMenuItems)
                         {
-                            menu.Items.Last().SeperatorBefore = true;
+                            menu.Items.Last().SeparatorBefore = true;
                         }
                     }
                 }

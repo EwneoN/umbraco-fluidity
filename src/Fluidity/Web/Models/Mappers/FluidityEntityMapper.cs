@@ -17,6 +17,8 @@ using Umbraco.Web.Models.ContentEditing;
 using ObjectExtensions = Fluidity.Extensions.ObjectExtensions;
 using System.ComponentModel;
 using System.Reflection;
+using Umbraco.Core.Composing;
+using Umbraco.Core.PropertyEditors;
 
 namespace Fluidity.Web.Models.Mappers
 {
@@ -32,7 +34,7 @@ namespace Fluidity.Web.Models.Mappers
         }
 
         public FluidityEntityMapper()
-            : this(new UmbracoDataTypeHelper(), ApplicationContext.Current.Services.DataTypeService)
+            : this(new UmbracoDataTypeHelper(), Current.Services.DataTypeService)
         { }
 
         public FluidityEntityDisplayModel ToDisplayModel(FluiditySectionConfig section, FluidityCollectionConfig collection, object entity)
@@ -152,12 +154,11 @@ namespace Fluidity.Web.Models.Mappers
                     {
                         foreach (var field in tab.Fields)
                         {                            
-                            var dataTypeInfo = _dataTypeHelper.ResolveDataType(field, !display.CollectionIsEditable);
+                            var dataType = _dataTypeHelper.ResolveDataType(field, !display.CollectionIsEditable);
+                            var valueEditor = dataType.PropertyEditor.GetValueEditor();
 
-                            dataTypeInfo.PropertyEditor.ValueEditor.ConfigureForDisplay(dataTypeInfo.PreValues);
-
-                            var propEditorConfig = dataTypeInfo.PropertyEditor.PreValueEditor.ConvertDbToEditor(dataTypeInfo.PropertyEditor.DefaultPreValues,
-                                dataTypeInfo.PreValues);
+                            var propEditorConfig = dataType.PropertyEditor.PreValueEditor.ConvertDbToEditor(dataType.PropertyEditor.DefaultPreValues,
+                                dataType.PreValues);
 
                             // Calculate value
                             object value = !isNew
@@ -175,8 +176,9 @@ namespace Fluidity.Web.Models.Mappers
                                 value = field.ValueMapper.ModelToEditor(value);
                             }
 
-                            var dummyProp = new Property(new PropertyType(dataTypeInfo.DataTypeDefinition), value);
-                            value = dataTypeInfo.PropertyEditor.ValueEditor.ConvertDbToEditor(dummyProp, dummyProp.PropertyType, _dataTypeService);
+							var dummyProp = new Property(new PropertyType(dataType.DataType));
+							dummyProp.SetValue(value);
+                            value = valueEditor.ToEditor(dummyProp, _dataTypeService);
 
                             // Calculate label
                             var label = field.Label;
@@ -210,10 +212,10 @@ namespace Fluidity.Web.Models.Mappers
                                 Alias = field.Property.Name,
                                 Label = label,
                                 Description = description,
-                                Editor = dataTypeInfo.PropertyEditor.Alias,
-                                View = dataTypeInfo.PropertyEditor.ValueEditor.View,
+                                Editor = dataType.PropertyEditor.Alias,
+                                View = valueEditor.View,
                                 Config = propEditorConfig,
-                                HideLabel = dataTypeInfo.PropertyEditor.ValueEditor.HideLabel,
+                                HideLabel = valueEditor.HideLabel,
                                 Value = value
                             };
 
@@ -272,10 +274,12 @@ namespace Fluidity.Web.Models.Mappers
                     additionalData.Add("cuid", ObjectExtensions.EncodeAsGuid(cuid));
                     additionalData.Add("puid", ObjectExtensions.EncodeAsGuid(puid));
 
-                    var dataTypeInfo = _dataTypeHelper.ResolveDataType(propConfig, isReadOnly);
-                    var data = new ContentPropertyData(prop.Value, dataTypeInfo.PreValues, additionalData);
+                    var dataType = _dataTypeHelper.ResolveDataType(propConfig, isReadOnly);
+                    var data = new ContentPropertyData(prop.Value, dataType.DataType.Configuration);
 
-                    if (!dataTypeInfo.PropertyEditor.ValueEditor.IsReadOnly) {
+                    var valueEditor = dataType.PropertyEditor.GetValueEditor();
+
+                    if (!valueEditor.IsReadOnly) {
                         var currentValue = entity.GetPropertyValue(propConfig.Property);
 
                         var encryptedProp = collection.EncryptedProperties?.FirstOrDefault(x => x.Name == propConfig.Property.Name);
@@ -288,13 +292,14 @@ namespace Fluidity.Web.Models.Mappers
                             currentValue = propConfig.ValueMapper.ModelToEditor(currentValue);
                         }
 
-                        var propVal = dataTypeInfo.PropertyEditor.ValueEditor.ConvertEditorToDb(data, currentValue);
-                        var supportTagsAttribute = TagExtractor.GetAttribute(dataTypeInfo.PropertyEditor);
+                        var propVal = valueEditor.FromEditor(data, currentValue);
+                        var supportTagsAttribute = TagExtractor.GetAttribute(dataType.PropertyEditor);
                         if (supportTagsAttribute != null)
                         {
-                            var dummyProp = new Property(new PropertyType(dataTypeInfo.DataTypeDefinition), propVal);
+                            var dummyProp = new Property(new PropertyType(dataType.DataType));
+							dummyProp.SetValue(propVal);
                             TagExtractor.SetPropertyTags(dummyProp, data, propVal, supportTagsAttribute);
-                            propVal = dummyProp.Value;
+                            propVal = dummyProp.GetValue();
                         }
 
                         if (propConfig.ValueMapper != null)

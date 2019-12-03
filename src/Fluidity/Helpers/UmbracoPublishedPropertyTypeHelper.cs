@@ -5,17 +5,24 @@
 
 using System.Collections.Generic;
 using Umbraco.Core;
+using Umbraco.Core.Cache;
+using Umbraco.Core.Composing;
 using Umbraco.Core.Models;
 using Umbraco.Core.Models.PublishedContent;
+using Umbraco.Core.PropertyEditors;
 
 namespace Fluidity.Helpers
 {
     internal static class UmbracoPublishedPropertyTypeHelper
     {
-        public static IDictionary<string, PreValue> GetPreValues(this PublishedPropertyType propType)
+        public static ValueListConfiguration GetPreValues(this PublishedPropertyType propType)
         {
-            return (IDictionary<string, PreValue>)ApplicationContext.Current.ApplicationCache.RequestCache.GetCacheItem($"UmbracoPublishedPropertyTypeHelper.GetPreValues_{propType.DataTypeId}", () => 
-                ApplicationContext.Current.Services.DataTypeService.GetPreValuesCollectionByDataTypeId(propType.DataTypeId).PreValuesAsDictionary);
+            return Current
+                   .AppCaches
+                   .RequestCache
+                   .GetCacheItem($"UmbracoPublishedPropertyTypeHelper.GetPreValues_{propType.DataType.Id}", 
+                                 () =>
+				(ValueListConfiguration)Current.Services.DataTypeService.GetDataType(propType.DataType.Id).Configuration);
         } 
     }
 }

@@ -3,6 +3,7 @@
 // Licensed under the Apache License, Version 2.0.
 // </copyright>
 
+using System.Collections.Generic;
 using Umbraco.Core.Models;
 using Umbraco.Core.PropertyEditors;
 
@@ -10,15 +11,15 @@ namespace Fluidity.Models
 {
     internal class DataTypeInfo
     {
-        public IDataTypeDefinition DataTypeDefinition { get; }
+        public IDataType DataType { get; }
 
-        public PropertyEditor PropertyEditor { get; }
+        public IDataEditor PropertyEditor { get; }
 
-        public PreValueCollection PreValues { get; }
+        public ValueListConfiguration PreValues { get; }
 
-        public DataTypeInfo(IDataTypeDefinition dataTypeDefinition, PropertyEditor propertyEditor, PreValueCollection preValues)
+        public DataTypeInfo(IDataType dataType, IDataEditor propertyEditor, ValueListConfiguration preValues)
         {
-            DataTypeDefinition = dataTypeDefinition;
+            DataType = dataType;
             PropertyEditor = propertyEditor;
             PreValues = preValues;
         }

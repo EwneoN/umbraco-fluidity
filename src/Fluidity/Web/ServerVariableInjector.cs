@@ -8,32 +8,34 @@ using System.Web;
 using System.Web.Mvc;
 using System.Web.Routing;
 using Fluidity.Web.Api;
-using Umbraco.Core;
+using Umbraco.Core.Composing;
 using Umbraco.Web;
-using Umbraco.Web.UI.JavaScript;
+using Umbraco.Web.JavaScript;
 
 namespace Fluidity.Web
 {
-    internal class ServerVariableInjector : ApplicationEventHandler
+    internal class ServerVariableInjector : IComponent
     {
-        protected override void ApplicationStarted(UmbracoApplicationBase umbracoApplication, ApplicationContext applicationContext)
+        public void Initialize()
         {
-            ServerVariablesParser.Parsing += (sender, objects) =>
-            {
-                if (HttpContext.Current == null)
-                    return;
+			ServerVariablesParser.Parsing += (sender, objects) =>
+			{
+				if (HttpContext.Current == null)
+					return;
 
-                var urlHelper = new UrlHelper(new RequestContext(new HttpContextWrapper(HttpContext.Current), new RouteData()));
-                var variables = new Dictionary<string, object>
-                {
-                    { "apiBaseUrl", urlHelper.GetUmbracoApiServiceBaseUrl<FluidityApiController>(c => c.Index()) }
-                };
+				var urlHelper = new UrlHelper(new RequestContext(new HttpContextWrapper(HttpContext.Current), new RouteData()));
+				var variables = new Dictionary<string, object>
+				{
+					{ "apiBaseUrl", urlHelper.GetUmbracoApiServiceBaseUrl<FluidityApiController>(c => c.Index()) }
+				};
 
-                if (!objects.ContainsKey("fluidity"))
-                {
-                    objects.Add("fluidity", variables);
-                }
-            };
-        }
+				if (!objects.ContainsKey("fluidity"))
+				{
+					objects.Add("fluidity", variables);
+				}
+			};
+		}
+
+        public void Terminate() { }
     }
 }

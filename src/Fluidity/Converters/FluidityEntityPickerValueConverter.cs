@@ -4,34 +4,23 @@
 // </copyright>
 
 using System;
-using System.Collections.Generic;
+using System.Linq;
 using Fluidity.Configuration;
-using Fluidity.Helpers;
 using Umbraco.Core;
+using Umbraco.Core.Composing;
 using Umbraco.Core.Logging;
 using Umbraco.Core.Models.PublishedContent;
 using Umbraco.Core.PropertyEditors;
 
 namespace Fluidity.Converters
 {
-    [PropertyValueCache(PropertyCacheValue.All, PropertyCacheLevel.Content)]
-    [PropertyValueType(typeof(IEnumerable<object>))]
     public class FluidityEntityPickerValueConverter : PropertyValueConverterBase
     {
-
-
-
         public override bool IsConverter(IPublishedPropertyType propertyType)
         {
             return propertyType.EditorAlias.InvariantEquals("Fluidity.EntityPicker");
         }
-
-        public override object ConvertSourceToIntermediate(IPublishedElement owner, IPublishedPropertyType propertyType, object source,
-                                                           bool preview)
-        {
-	        return base.ConvertSourceToIntermediate(owner, propertyType, source, preview);
-        }
-
+		
         public override object ConvertIntermediateToObject(IPublishedElement owner, IPublishedPropertyType propertyType,
                                                            PropertyCacheLevel referenceCacheLevel, object inter, bool preview)
 		{
@@ -44,75 +33,34 @@ namespace Fluidity.Converters
 				if (ids.Length == 0)
 					return null;
 
-				var preValues = propertyType.GetPreValues();
-				if (preValues == null || !preValues.ContainsKey("collection"))
-					throw new ApplicationException($"Fluidity DataType {propertyType.DataTypeId} has no 'collection' pre value.");
+				var preValues = (ValueListConfiguration)propertyType.DataType.Configuration;
 
-				var collectionParts = preValues["collection"].Value.Split(new[] { "," }, StringSplitOptions.RemoveEmptyEntries);
+				ValueListConfiguration.ValueListItem item = preValues?.Items?.First(x => x.Value == "collection");
+
+				if (preValues == null || item == null)
+					throw new ApplicationException($"Fluidity DataType {propertyType.DataType.Id} has no 'collection' pre value.");
+
+				var collectionParts = item.Value.Split(new[] { "," }, StringSplitOptions.RemoveEmptyEntries);
 				if (collectionParts.Length < 2)
-					throw new ApplicationException($"Fluidity DataType {propertyType.DataTypeId} has an invalid 'collection' pre value.");
+					throw new ApplicationException($"Fluidity DataType {propertyType.DataType.Id} has an invalid 'collection' pre value.");
 
 				var section = FluidityContext.Current.Config.Sections[collectionParts[0]];
 				if (section == null)
-					throw new ApplicationException($"Fluidity DataType {propertyType.DataTypeId} has an invalid 'collection' pre value. No section found with the alias {collectionParts[0]}");
+					throw new ApplicationException($"Fluidity DataType {propertyType.DataType.Id} has an invalid 'collection' pre value. No section found with the alias {collectionParts[0]}");
 
 				var collection = section.Tree.FlattenedTreeItems[collectionParts[1]] as FluidityCollectionConfig;
 				if (collection == null)
-					throw new ApplicationException($"Fluidity DataType {propertyType.DataTypeId} has an invalid 'collection' pre value. No collection found with the alias {collectionParts[1]}");
+					throw new ApplicationException($"Fluidity DataType {propertyType.DataType.Id} has an invalid 'collection' pre value. No collection found with the alias {collectionParts[1]}");
 
 				return FluidityContext.Current.Services.EntityService.GetEntitiesByIds(section, collection, ids);
 
 			}
 			catch (Exception e)
 			{
-				LogHelper.Error<FluidityEntityPickerValueConverter>("Error converting value", e);
+				Current.Logger.Error<FluidityEntityPickerValueConverter>("Error converting value", e);
 			}
 
 			return null;
 		}
-
-        public override object ConvertIntermediateToXPath(IPublishedElement owner, IPublishedPropertyType propertyType,
-                                                          PropertyCacheLevel referenceCacheLevel, object inter, bool preview)
-        {
-	        return base.ConvertIntermediateToXPath(owner, propertyType, referenceCacheLevel, inter, preview);
-        }
-
-        public override object ConvertDataToSource(PublishedPropertyType propertyType, object source, bool preview)
-        {
-            try
-            {
-                if (source == null || source.ToString().IsNullOrWhiteSpace())
-                    return null;
-
-                var ids = source.ToString().Split(new[] { "," }, StringSplitOptions.RemoveEmptyEntries);
-                if (ids.Length == 0)
-                    return null;
-
-                var preValues = propertyType.GetPreValues();
-                if (preValues == null || !preValues.ContainsKey("collection"))
-                    throw new ApplicationException($"Fluidity DataType {propertyType.DataTypeId} has no 'collection' pre value.");
-
-                var collectionParts = preValues["collection"].Value.Split(new[] { "," }, StringSplitOptions.RemoveEmptyEntries);
-                if (collectionParts.Length < 2)
-                    throw new ApplicationException($"Fluidity DataType {propertyType.DataTypeId} has an invalid 'collection' pre value.");
-
-                var section = FluidityContext.Current.Config.Sections[collectionParts[0]];
-                if (section == null)
-                    throw new ApplicationException($"Fluidity DataType {propertyType.DataTypeId} has an invalid 'collection' pre value. No section found with the alias {collectionParts[0]}");
-
-                var collection = section.Tree.FlattenedTreeItems[collectionParts[1]] as FluidityCollectionConfig;
-                if (collection == null)
-                    throw new ApplicationException($"Fluidity DataType {propertyType.DataTypeId} has an invalid 'collection' pre value. No collection found with the alias {collectionParts[1]}");
-
-                return FluidityContext.Current.Services.EntityService.GetEntitiesByIds(section, collection, ids);
-
-            }
-            catch (Exception e)
-            {
-                LogHelper.Error<FluidityEntityPickerValueConverter>("Error converting value", e);
-            }
-
-            return null;
-        }
-    }
+	}
 }

@@ -5,6 +5,7 @@
 
 using System.Xml;
 using Umbraco.Core;
+using Umbraco.Core.Composing;
 using Umbraco.Core.IO;
 using Umbraco.Core.Services;
 using Umbraco.Core.Xml;
@@ -15,17 +16,17 @@ namespace Fluidity.Helpers
     internal class UmbracoUiHelper
     {
         private ISectionService _sectionService;
-        private IApplicationTreeService _treeService;
+        private ITreeService _treeService;
 
         internal UmbracoUiHelper(ISectionService sectionService,
-            IApplicationTreeService treeService)
+            ITreeService treeService)
         {
             _sectionService = sectionService;
             _treeService = treeService;
         }
 
         internal UmbracoUiHelper()
-            : this(ApplicationContext.Current.Services.SectionService, ApplicationContext.Current.Services.ApplicationTreeService)
+            : this(Current.Services.SectionService, Current.Services.ApplicationTreeService)
         { }
 
         internal void Build(FluidityContext context)
