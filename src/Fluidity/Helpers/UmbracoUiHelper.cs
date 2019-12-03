@@ -4,10 +4,11 @@
 // </copyright>
 
 using System.Xml;
-using umbraco.cms.businesslogic.packager.standardPackageActions;
 using Umbraco.Core;
 using Umbraco.Core.IO;
 using Umbraco.Core.Services;
+using Umbraco.Core.Xml;
+using Umbraco.Web.Services;
 
 namespace Fluidity.Helpers
 {

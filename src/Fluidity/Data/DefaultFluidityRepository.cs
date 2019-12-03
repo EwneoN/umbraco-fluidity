@@ -12,215 +12,225 @@ using Fluidity.Models;
 using Umbraco.Core;
 using Umbraco.Core.Models;
 using Umbraco.Core.Persistence;
-using Umbraco.Core.Persistence.SqlSyntax;
 using System;
+using Umbraco.Core.Logging;
+using Umbraco.Core.Persistence.SqlSyntax;
+using Umbraco.Core.Scoping;
 
 namespace Fluidity.Data
 {
-    public class DefaultFluidityRepository : IFluidityRepository
-    {
-        protected FluidityCollectionConfig _collection;
+	public class DefaultFluidityRepository : IFluidityRepository
+	{
+		private IScopeProvider _scopeProvider;
+		private readonly ILogger _logger;
 
-        protected ISqlSyntaxProvider SyntaxProvider => ApplicationContext.Current.DatabaseContext.SqlSyntax;
+		protected FluidityCollectionConfig _collection;
+		private readonly IUmbracoDatabaseFactory _dbFactory;
 
-        protected Database Db => !_collection.ConnectionString.IsNullOrWhiteSpace()
-            ? new Database(_collection.ConnectionString)
-            : ApplicationContext.Current.DatabaseContext.Database;
+		protected ISqlSyntaxProvider SyntaxProvider => _scopeProvider.CreateScope().Database.SqlContext.SqlSyntax;
 
-        public DefaultFluidityRepository(FluidityCollectionConfig collection)
-        {
-            _collection = collection;
-        }
+		protected IUmbracoDatabase Db => !_collection.ConnectionString.IsNullOrWhiteSpace()
+			                         ? GD()//new UmbracoDatabase(_collection.ConnectionString)
+									 : _scopeProvider.CreateScope().Database;
+		
+		public DefaultFluidityRepository(FluidityCollectionConfig collection, IScopeProvider scopeProvider,
+		                                 IUmbracoDatabaseFactory dbFactory, ILogger logger)
+		{
+			_collection = collection;
+			_dbFactory = dbFactory;
+			_logger = logger;
+		}
 
-        public Type EntityType => _collection.EntityType;
+		public Type EntityType => _collection.EntityType;
 
-        public Type IdType => _collection.IdProperty.Type;
+		public Type IdType => _collection.IdProperty.Type;
 
-        public object Get(object id, bool fireEvents = true)
-        {
-            return Db.SingleOrDefault(_collection.EntityType, id);
-        }
+		public object Get(object id, bool fireEvents = true)
+		{
+			return Db.SingleOrDefault(_collection.EntityType, id);
+		}
 
-        public IEnumerable<object> GetAll(bool fireEvents = true)
-        {
-            var query = new Sql($"SELECT * FROM [{_collection.EntityType.GetTableName()}]");
+		public IEnumerable<object> GetAll(bool fireEvents = true)
+		{
+			var query = new Sql($"SELECT * FROM [{_collection.EntityType.GetTableName()}]");
 
-            bool hasWhere = false;
-            if (_collection.FilterExpression != null)
-            {
-                query.Where(_collection.EntityType, _collection.FilterExpression, SyntaxProvider);
-                hasWhere = true;
-            }
+			bool hasWhere = false;
+			if (_collection.FilterExpression != null)
+			{
+				query.Where(_collection.EntityType, _collection.FilterExpression, SyntaxProvider);
+				hasWhere = true;
+			}
 
-            if (_collection.DeletedProperty != null)
-            {
-                var prefix = !hasWhere ? "WHERE" : "AND";
-                query.Append($" {prefix} {_collection.DeletedProperty.GetColumnName()} = 0 ");
-            }
+			if (_collection.DeletedProperty != null)
+			{
+				var prefix = !hasWhere ? "WHERE" : "AND";
+				query.Append($" {prefix} {_collection.DeletedProperty.GetColumnName()} = 0 ");
+			}
 
-            if (_collection.SortProperty != null)
-            {
-                if (_collection.SortDirection == SortDirection.Ascending)
-                {
-                    SqlExtensions.OrderBy(query, _collection.EntityType, _collection.SortProperty, SyntaxProvider);
-                }
-                else
-                {
-                    SqlExtensions.OrderByDescending(query, _collection.EntityType, _collection.SortProperty, SyntaxProvider);
+			if (_collection.SortProperty != null)
+			{
+				if (_collection.SortDirection == SortDirection.Ascending)
+				{
+					query.OrderBy(_collection.EntityType, _collection.SortProperty, SyntaxProvider);
+				}
+				else
+				{
+					query.OrderByDescending(_collection.EntityType, _collection.SortProperty,
+					                                SyntaxProvider);
+				}
+			}
 
-                }
-            }
+			return Db.Fetch(_collection.EntityType, query);
+		}
 
-            return Db.Fetch(_collection.EntityType, query);
-        }
+		public PagedResult<object> GetPaged(int pageNumber, int pageSize, LambdaExpression whereClause,
+		                                    LambdaExpression orderBy, SortDirection orderDirection,
+		                                    bool fireEvents = true)
+		{
+			var query = new Sql($"SELECT * FROM [{_collection.EntityType.GetTableName()}]");
 
-        public PagedResult<object> GetPaged(int pageNumber, int pageSize, LambdaExpression whereClause, LambdaExpression orderBy, SortDirection orderDirection, bool fireEvents = true)
-        {
-            var query = new Sql($"SELECT * FROM [{_collection.EntityType.GetTableName()}]");
+			// Where
+			if (_collection.FilterExpression != null && whereClause != null)
+			{
+				var body = Expression.AndAlso(whereClause.Body, _collection.FilterExpression.Body);
+				whereClause = Expression.Lambda(body, whereClause.Parameters[0]);
+			}
+			else if (_collection.FilterExpression != null)
+			{
+				whereClause = _collection.FilterExpression;
+			}
 
-            // Where
-            if (_collection.FilterExpression != null && whereClause != null)
-            {
-                var body = Expression.AndAlso(whereClause.Body, _collection.FilterExpression.Body);
-                whereClause = Expression.Lambda(body, whereClause.Parameters[0]);
-            }
-            else if (_collection.FilterExpression != null)
-            {
-                whereClause = _collection.FilterExpression;
-            }
+			if (whereClause != null)
+			{
+				query.Where(_collection.EntityType, whereClause, SyntaxProvider);
+			}
+			else
+			{
+				query.Where("1 = 1");
+			}
 
-            if (whereClause != null)
-            {
-                query.Where(_collection.EntityType, whereClause, SyntaxProvider);
-            }
-            else
-            {
-                query.Where("1 = 1");
-            }
+			if (_collection.DeletedProperty != null)
+			{
+				query.Append($" AND ({_collection.DeletedProperty.GetColumnName()} = 0)");
+			}
 
-            if (_collection.DeletedProperty != null)
-            {
-                query.Append($" AND ({_collection.DeletedProperty.GetColumnName()} = 0)");
-            }
+			// Order by
+			LambdaExpression orderByExp = orderBy ?? _collection.SortProperty;
+			if (orderByExp != null)
+			{
+				if (orderDirection == SortDirection.Ascending)
+				{
+					SqlExtensions.OrderBy(query, _collection.EntityType, orderByExp, SyntaxProvider);
+				}
+				else
+				{
+					SqlExtensions.OrderByDescending(query, _collection.EntityType, orderByExp, SyntaxProvider);
+				}
+			}
+			else
+			{
+				// There is a bug in the Db.Page code that effectively requires there
+				// to be an order by clause no matter what, so if one isn't provided
+				// we'lld just order by 1
+				query.Append(" ORDER BY 1 ");
+			}
 
-            // Order by
-            LambdaExpression orderByExp = orderBy ?? _collection.SortProperty;
-            if (orderByExp != null) 
-            {
-                if (orderDirection == SortDirection.Ascending)
-                {
-                    SqlExtensions.OrderBy(query, _collection.EntityType, orderByExp, SyntaxProvider);
-                }
-                else
-                {
-                    SqlExtensions.OrderByDescending(query, _collection.EntityType, orderByExp, SyntaxProvider);
-                }
-            }
-            else
-            {
-                // There is a bug in the Db.Page code that effectively requires there
-                // to be an order by clause no matter what, so if one isn't provided
-                // we'lld just order by 1
-                query.Append(" ORDER BY 1 ");
-            }
+			var result = Db.Page(_collection.EntityType, pageNumber, pageSize, query);
 
-            var result = Db.Page(_collection.EntityType, pageNumber, pageSize, query);
+			return new PagedResult<object>(result.TotalItems, pageNumber, pageSize)
+			{
+				Items = result.Items
+			};
+		}
 
-            return new PagedResult<object>(result.TotalItems, pageNumber, pageSize)
-            {
-                Items = result.Items
-            };
-        }
+		public object Save(object entity, bool fireEvents = true)
+		{
+			SavingEntityEventArgs args = null;
 
-        public object Save(object entity, bool fireEvents = true)
-        {
-            SavingEntityEventArgs args = null;
+			if (fireEvents)
+			{
+				var existing = Get(entity.GetPropertyValue(_collection.IdProperty));
+				args = new SavingEntityEventArgs
+				{
+					Entity = new BeforeAndAfter<object>
+					{
+						Before = existing,
+						After = entity
+					}
+				};
 
-            if (fireEvents)
-            {
-                var existing = Get(entity.GetPropertyValue(_collection.IdProperty));
-                args = new SavingEntityEventArgs
-                {
-                    Entity = new BeforeAndAfter<object>
-                    {
-                        Before = existing,
-                        After = entity
-                    }
-                };
+				Fluidity.OnSavingEntity(args);
 
-                Fluidity.OnSavingEntity(args);
+				if (args.Cancel)
+					return args.Entity.After;
 
-                if (args.Cancel)
-                    return args.Entity.After;
+				entity = args.Entity.After;
+			}
 
-                entity = args.Entity.After;
-            }
+			Db.Save(entity);
 
-            Db.Save(entity);
+			if (fireEvents)
+			{
+				Fluidity.OnSavedEntity(args);
 
-            if (fireEvents)
-            {
-                Fluidity.OnSavedEntity(args);
+				entity = args.Entity.After;
+			}
 
-                entity = args.Entity.After;
-            }
+			return entity;
+		}
 
-            return entity;
-        }
+		public void Delete(object id, bool fireEvents = true)
+		{
+			DeletingEntityEventArgs args = null;
 
-        public void Delete(object id, bool fireEvents = true)
-        {
-            DeletingEntityEventArgs args = null;
+			if (fireEvents)
+			{
+				var existing = Get(id);
+				args = new DeletingEntityEventArgs
+				{
+					Entity = existing
+				};
 
-            if (fireEvents)
-            {
-                var existing = Get(id);
-                args = new DeletingEntityEventArgs
-                {
-                    Entity = existing
-                };
+				Fluidity.OnDeletingEntity(args);
 
-                Fluidity.OnDeletingEntity(args);
+				if (args.Cancel)
+					return;
+			}
 
-                if (args.Cancel)
-                    return;
+			var query = new Sql(_collection.DeletedProperty != null
+				                    ? $"UPDATE [{_collection.EntityType.GetTableName()}] SET {_collection.DeletedProperty.GetColumnName()} = 1 WHERE {_collection.IdProperty.GetColumnName()} = @0"
+				                    : $"DELETE FROM [{_collection.EntityType.GetTableName()}] WHERE {_collection.IdProperty.GetColumnName()} = @0",
+			                    id);
 
-            }
+			Db.Execute(query);
 
-            var query = new Sql(_collection.DeletedProperty != null
-                ? $"UPDATE [{_collection.EntityType.GetTableName()}] SET {_collection.DeletedProperty.GetColumnName()} = 1 WHERE {_collection.IdProperty.GetColumnName()} = @0"
-                : $"DELETE FROM [{_collection.EntityType.GetTableName()}] WHERE {_collection.IdProperty.GetColumnName()} = @0",
-                id);
+			if (fireEvents)
+				Fluidity.OnDeletedEntity(args);
+		}
 
-            Db.Execute(query);
+		public long GetTotalRecordCount(bool fireEvents = true)
+		{
+			var query = new Sql($"SELECT COUNT(1) FROM [{_collection.EntityType.GetTableName()}]");
 
-            if (fireEvents)
-                Fluidity.OnDeletedEntity(args);
-        }
+			bool hasWhere = false;
+			if (_collection.FilterExpression != null)
+			{
+				query.Where(_collection.EntityType, _collection.FilterExpression, SyntaxProvider);
+				hasWhere = true;
+			}
 
-        public long GetTotalRecordCount(bool fireEvents = true)
-        {
-            var query = new Sql($"SELECT COUNT(1) FROM [{_collection.EntityType.GetTableName()}]");
+			if (_collection.DeletedProperty != null)
+			{
+				var prefix = !hasWhere ? "WHERE" : "AND";
+				query.Append($" {prefix} {_collection.DeletedProperty.GetColumnName()} = 0 ");
+			}
 
-            bool hasWhere = false;
-            if (_collection.FilterExpression != null)
-            {
-                query.Where(_collection.EntityType, _collection.FilterExpression, SyntaxProvider);
-                hasWhere = true;
-            }
+			return Db.ExecuteScalar<long>(query);
+		}
 
-            if (_collection.DeletedProperty != null)
-            {
-                var prefix = !hasWhere ? "WHERE" : "AND";
-                query.Append($" {prefix} {_collection.DeletedProperty.GetColumnName()} = 0 ");
-            }
-
-            return Db.ExecuteScalar<long>(query);
-        }
-
-        public void Dispose()
-        {
-            //No disposable resources
-        }
-    }
+		public void Dispose()
+		{
+			//No disposable resources
+		}
+	}
 }

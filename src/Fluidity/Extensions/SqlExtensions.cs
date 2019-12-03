@@ -5,6 +5,7 @@
 
 using System;
 using System.Linq.Expressions;
+using NPoco;
 using Umbraco.Core.Persistence;
 using Umbraco.Core.Persistence.SqlSyntax;
 
